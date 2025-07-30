@@ -1,0 +1,7 @@
+model\VoziloRegistry.class
+model\VoziloInfo.class
+app\Main.class
+generator\TemperatureUtils.class
+app\Aplikacija.class
+generator\WordGenerator.class
+generator\WordUtils.class
