@@ -3,21 +3,24 @@ package generator;
 import model.VoziloInfo;
 import model.VoziloRegistry;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
-import generator.TemperatureUtils;
-import generator.WordUtils;
 
 import javax.swing.JOptionPane;
-import java.io.*;
-import java.text.DateFormat;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.io.BufferedWriter;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Random;
 
 public class WordGenerator {
 
+    // Širina kolone za broj (uključuje i minus, cifre, tačku i 1 decimalu)
+    private static final int COL_WIDTH = 6;
+
     public static void generisiViseIspisa(int dan, int mesec, int[] sati, int[] minuti,
-                                          double temperatura, int regBr, int temp2) throws IOException, ParseException {
+                                          double temperatura, int regBr, int temp2) throws IOException {
         VoziloInfo vozilo = VoziloRegistry.get(regBr);
         if (vozilo == null) {
             JOptionPane.showMessageDialog(null, "Nepoznat registar broj: " + regBr);
@@ -25,87 +28,88 @@ public class WordGenerator {
         }
 
         String filePath = "IspisWord.docx";
-        FileOutputStream outStream = new FileOutputStream(filePath);
-        PrintWriter textOut = new PrintWriter(new BufferedWriter(new FileWriter("Ispis")));
 
-        XWPFDocument doc = new XWPFDocument();
-        WordUtils.podesiStranicu(doc);
+        try (FileOutputStream outStream = new FileOutputStream(filePath);
+             PrintWriter textOut = new PrintWriter(new BufferedWriter(new FileWriter("Ispis")));
+             XWPFDocument doc = new XWPFDocument()) {
 
-        for (int i = 0; i < sati.length; i++) {
-            int trenutniDan = dan + i;
-            int sat = sati[i];
-            int minut = minuti[i];
-            int sekunde = new Random().nextInt(60);
+            WordUtils.podesiStranicu(doc);
 
-            String datumStr = String.format("%02d/%02d/2025", trenutniDan, mesec);
-            SimpleDateFormat df = new SimpleDateFormat("dd/MM/yyyy");
-            Date datum = df.parse(datumStr);
-            String danUNedelji = new SimpleDateFormat("EEEE").format(datum);
+            DateTimeFormatter topFmt    = DateTimeFormatter.ofPattern("EEEE dd/MM/yyyy HH:mm:ss");
+            DateTimeFormatter toFromFmt = DateTimeFormatter.ofPattern("EEEE dd/MM/yyyy HH:mm");
+            DateTimeFormatter lineFmt   = DateTimeFormatter.ofPattern("dd/MM HH:mm");
 
-            // Gornje linije
-            for (String linija : vozilo.getZaglavljeLinije()) {
-                WordUtils.ispisiWord(doc, linija, vozilo.koristiBoldZaglavlje(), 8);
-            }
+            Random rnd = new Random();
 
-            WordUtils.ispisiWord(doc, String.format("%s %02d/%02d/2025 %02d:%02d:%02d",
-                    danUNedelji, trenutniDan, mesec, sat, minut, sekunde), vozilo.koristiBoldZaglavlje(), 8);
+            for (int i = 0; i < sati.length; i++) {
+                int trenutniDan = dan + i;
+                int sat = sati[i];
+                int minut = minuti[i];
+                int sekunde = rnd.nextInt(60);
 
-            WordUtils.ispisiWord(doc, "Sample rate:30", true, 8);
-            WordUtils.ispisiWord(doc, "T1: Return air", true, 8);
-            WordUtils.ispisiWord(doc, "T2: Rear", true, 8);
+                // Gornje linije (zaglavlje)
+                for (String linija : vozilo.getZaglavljeLinije()) {
+                    WordUtils.ispisiWord(doc, linija, vozilo.koristiBoldZaglavlje(), 8);
+                }
 
-            WordUtils.ispisiWord(doc, String.format("To: %s %02d/%02d/2025 %02d:%02d",
-                    danUNedelji, trenutniDan, mesec, sat, minut), true, 8);
+                // Početni timestamp za ovaj blok
+                LocalDateTime tStart = LocalDateTime.of(2025, mesec, trenutniDan, sat, minut, sekunde);
 
-            WordUtils.ispisiWord(doc, "\t        T1   T2   \t     1234A", false, 8);
+                // Gornji red sa datumom/vremenom
+                WordUtils.ispisiWord(doc, tStart.format(topFmt), vozilo.koristiBoldZaglavlje(), 8);
 
-            int lokalDan = trenutniDan;
-            int lokalSat = sat;
-            int lokalMinut = minut;
+                WordUtils.ispisiWord(doc, "Sample rate:30", true, 8);
+                WordUtils.ispisiWord(doc, "T1: Return air", true, 8);
+                WordUtils.ispisiWord(doc, "T2: Rear", true, 8);
 
-            for (int j = 0; j < 24; j++) {
-                for (int k = 0; k < 2; k++) {
+                // "To:" (početno vreme - bez sekundi)
+                WordUtils.ispisiWord(doc, "To: " + tStart.format(toFromFmt), true, 8);
+
+                // Header iznad kolona — koristi istu širinu kao i brojevi
+                // %"+COL_WIDTH+"s znači desno poravnanje u polju širine COL_WIDTH
+                String header = String.format("                        %"+COL_WIDTH+"s   %"+COL_WIDTH+"s     1234A", "T1", "T2");
+                WordUtils.ispisiWord(doc, header, false, 8);
+
+                // Linije merenja – 48 koraka po 30 min unazad (24h)
+                LocalDateTime cursor = tStart;
+                for (int n = 0; n < 48; n++) {
                     double t1 = TemperatureUtils.t1(temperatura, temp2);
                     double t2 = TemperatureUtils.t2(t1);
-                    String linija = String.format("%02d/%02d %02d:%02d     %.1f   %.1f",
-                            lokalDan, mesec, lokalSat, lokalMinut, t1, t2);
+
+                    // desno poravnan broj u polju širine COL_WIDTH; T2 će se „pomeriti udesno“
+                    // proporcionalno dužini T1, jer T1 zauzima više mesta u svom polju
+                    String linija = String.format(
+                            "%s     %"+COL_WIDTH+".1f   %"+COL_WIDTH+".1f",
+                            cursor.format(lineFmt), t1, t2
+                    );
 
                     WordUtils.ispisiWord(doc, linija, false, 8);
                     textOut.println(linija);
 
-                    if (lokalMinut >= 30) {
-                        lokalMinut -= 30;
-                    } else {
-                        lokalMinut += 30;
-                        if (lokalSat == 0) {
-                            lokalSat = 24;
-                            lokalDan--;
-                        }
-                        lokalSat--;
-                    }
+                    cursor = cursor.minusMinutes(30);
                 }
+
+                // "From:" – tačno 24h unazad; NE BOLD
+                WordUtils.ispisiWord(doc, "From: " + cursor.format(toFromFmt), false, 8);
+
+                if (vozilo.koristiLinijeNaKraju()) {
+                    WordUtils.ispisiWord(doc,
+                            vozilo.getOznaka().equals("AA 406RA")
+                                    ? "- - - - - - - - - - - - - - - - - -"
+                                    : "-------------------------",
+                            true, 8);
+                    WordUtils.ispisiWord(doc, "", true, 8);
+                    WordUtils.ispisiWord(doc, "Signature", false, 8);
+                }
+                // 4 prazna reda kao razmak
+                WordUtils.ispisiWord(doc, "", false, 8);
+                WordUtils.ispisiWord(doc, "", false, 8);
+                WordUtils.ispisiWord(doc, "", false, 8);
+                WordUtils.ispisiWord(doc, "", false, 8);
             }
 
-            WordUtils.ispisiWord(doc, String.format("From: %s %02d/%02d/2025 %02d:%02d",
-                    danUNedelji, lokalDan, mesec, lokalSat, lokalMinut), true, 8);
-
-            if (vozilo.koristiLinijeNaKraju()) {
-                WordUtils.ispisiWord(doc, vozilo.getOznaka().equals("AA 406RA")
-                        ? "- - - - - - - - - - - - - - - - - -" : "-------------------------", true, 8);
-                WordUtils.ispisiWord(doc, "", true, 8);
-                WordUtils.ispisiWord(doc, "Signature", false, 8);
-            }
-
-            // Dodaj razmak od 4 prazna reda između ispisa
-            WordUtils.ispisiWord(doc, "", false, 8);
-            WordUtils.ispisiWord(doc, "", false, 8);
-            WordUtils.ispisiWord(doc, "", false, 8);
-            WordUtils.ispisiWord(doc, "", false, 8);
+            doc.write(outStream);
         }
-
-        doc.write(outStream);
-        outStream.close();
-        textOut.close();
 
         JOptionPane.showMessageDialog(null, "Word fajl uspešno kreiran: " + filePath);
     }

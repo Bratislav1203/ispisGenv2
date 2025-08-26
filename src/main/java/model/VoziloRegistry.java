@@ -88,6 +88,16 @@ public class VoziloRegistry {
         	    },
         	    true, true, "AB131RA", "11316036"
         	));
+        vozila.put(232, new VoziloInfo(
+        	    new String[]{
+        	        "LAZIC TRANS",
+        	        "",
+        	        "",
+        	        "AB-232RA. S/N: 12123816"
+        	    },
+        	    true, true, "AB232RA", "12123816"
+        	));
+
     }
 
     public static VoziloInfo get(int regBr) {

@@ -145,7 +145,7 @@ public class Aplikacija extends JFrame {
 
                 WordGenerator.generisiViseIspisa(dan, mesec, sati, minuti, temperatura, regBr, temp2);
                 JOptionPane.showMessageDialog(this, "Uspešno generisano!");
-            } catch (NumberFormatException | ParseException ex) {
+            } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(this, "Greška: " + ex.getMessage());
                 ex.printStackTrace();
             } catch (IOException e1) {
